@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ZORDAI 3D 动态折叠卡片 (手机自定义上传)</title>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0b0f19;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #f8fafc; }
+    p.subtitle { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+    /* 3D 视口 */
+    .viewport-box {
+      width: 100%;
+      max-width: 420px;
+      height: 380px;
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #threeCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+    #threeCanvas:active { cursor: grabbing; }
+
+    .hud {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 4px 10px;
+      border-radius: 999px;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 10;
+    }
+    .hud-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 6px #38bdf8;
+    }
+
+    /* 控制面板与上传区 */
+    .control-panel {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 16px;
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .slider-label { font-size: 13px; color: #94a3b8; white-space: nowrap; }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #38bdf8;
+      cursor: pointer;
+    }
+    .val-badge { font-family: monospace; font-size: 13px; color: #f8fafc; min-width: 36px; text-align: right; }
+
+    .presets {
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+    }
+    .btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #cbd5e1;
+      padding: 8px 0;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .btn.active {
+      background: #38bdf8;
+      color: #0f172a;
+      border-color: #38bdf8;
+      font-weight: 600;
+    }
+
+    /* 手机端图片上传网格 */
+    .upload-section {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 12px;
+    }
+    .upload-title {
+      font-size: 13px;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .upload-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .upload-item {
+      position: relative;
+      height: 75px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .upload-item:hover { border-color: #38bdf8; }
+    .upload-item img {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .upload-item span {
+      font-size: 10px;
+      color: #94a3b8;
+      z-index: 2;
+      background: rgba(15, 23, 42, 0.7);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .upload-item input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .share-tips {
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>ZORDAI 3D 互动卡片展示</h1>
+    <p class="subtitle">手机端随时上传图片，实时投射到正反 4 个折面上</p>
+  </div>
+
+  <div class="viewport-box">
+    <div class="hud">
+      <span class="hud-dot"></span>
+      <span id="hudAngle">Hinge: 90°</span>
+    </div>
+    <canvas id="threeCanvas"></canvas>
+  </div>
+
+  <div class="control-panel">
+    <div class="presets">
+      <button class="btn" onclick="setAngle(0)">平铺 0°</button>
+      <button class="btn active" onclick="setAngle(90)" id="btnHalf">半开 90°</button>
+      <button class="btn" onclick="setAngle(170)">合拢 170°</button>
+    </div>
+
+    <div class="slider-group">
+      <span class="slider-label">折叠角度</span>
+      <input type="range" id="angleSlider" min="0" max="175" value="90" step="1" oninput="onSlider(this.value)">
+      <span id="sliderVal" class="val-badge">90°</span>
+    </div>
+
+    <!-- 手机相册上传每一面 -->
+    <div class="upload-section">
+      <div class="upload-title">📷 点击格子上传手机图片 (1~4面)</div>
+      <div class="upload-grid">
+        <div class="upload-item" id="box1">
+          <span>封面</span>
+          <input type="file" accept="image/*" onchange="handleImageUpload(event, 0)">
+        </div>
+        <div class="upload-item" id="box2">
+          <span>内页左</span>
+          <input type="file" accept="image/*" onchange="handleImageUpload(event, 1)">
+        </div>
+        <div class="upload-item" id="box3">
+          <span>内页右</span>
+          <input type="file" accept="image/*" onchange="handleImageUpload(event, 2)">
+        </div>
+        <div class="upload-item" id="box4">
+          <span>封底</span>
+          <input type="file" accept="image/*" onchange="handleImageUpload(event, 3)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="share-tips">💡 提示：点击右上角分享按钮将网页链接转发至微信，朋友们即可在微信直接打开并互动！</div>
+
+  <script>
+    let scene, camera, renderer, controls;
+    let leftWingPivot, rightWingPivot;
+    let panelMaterials = [];
+    
+    // 默认内置占位纹理画布（在未上传前生成精美排版，上传后自动替换）
+    const imagesData = [null, null, null, null];
+
+    function createDefaultTexture(faceName, subtitle) {
+      const cv = document.createElement('canvas');
+      cv.width = 512; cv.height = 724;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#f0f9ff';
+      ctx.fillRect(0, 0, 512, 724);
+
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(20, 20, 472, 684);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(faceName, 256, 320);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '18px sans-serif';
+      ctx.fillText(subtitle, 256, 370);
+      ctx.fillText('请在下方点击上传您的手机照片', 256, 430);
+      return new THREE.CanvasTexture(cv);
+    }
+
+    function init3D() {
+      const container = document.querySelector('.viewport-box');
+      const canvas = document.getElementById('threeCanvas');
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(0, 0, 5.2);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(container.clientWidth, container.clientHeight);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 + 0.2;
+      controls.minDistance = 2.5;
+      controls.maxDistance = 10;
+
+      // 灯光
+      scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      dirLight.position.set(3, 5, 4);
+      scene.add(dirLight);
+
+      const cardW = 1.6, cardH = 2.2, cardT = 0.01;
+      const geom = new THREE.BoxGeometry(cardW, cardH, cardT);
+
+      // 初始化4个面的材质
+      const t1 = createDefaultTexture('封面 (Face 1)', '点击下方上传封面');
+      const t2 = createDefaultTexture('内页左 (Face 2)', '点击下方上传内页');
+      const t3 = createDefaultTexture('内页右 (Face 3)', '点击下方上传内页');
+      const t4 = createDefaultTexture('封底 (Face 4)', '点击下方上传封底');
+
+      // 材质顺序: [right, left, top, bottom, front, back]
+      const leftMats = [
+        new THREE.MeshStandardMaterial({color: 0xcccccc}), // 侧边
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        panelMaterials[3] = new THREE.MeshStandardMaterial({map: t4, roughness: 0.4}), // 外侧面 = 4封底
+        panelMaterials[1] = new THREE.MeshStandardMaterial({map: t2, roughness: 0.4})  // 内侧面 = 2内页左
+      ];
+
+      const rightMats = [
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        new THREE.MeshStandardMaterial({color: 0xcccccc}),
+        panelMaterials[2] = new THREE.MeshStandardMaterial({map: t3, roughness: 0.4}), // 内侧面 = 3内页右
+        panelMaterials[0] = new THREE.MeshStandardMaterial({map: t1, roughness: 0.4})  // 外侧面 = 1封面
+      ];
+
+      leftWingPivot = new THREE.Group();
+      scene.add(leftWingPivot);
+      const leftMesh = new THREE.Mesh(geom, leftMats);
+      leftMesh.position.set(-cardW / 2, 0, 0);
+      leftWingPivot.add(leftMesh);
+
+      rightWingPivot = new THREE.Group();
+      scene.add(rightWingPivot);
+      const rightMesh = new THREE.Mesh(geom, rightMats);
+      rightMesh.position.set(cardW / 2, 0, 0);
+      rightWingPivot.add(rightMesh);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      animate();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function setAngle(deg) {
+      document.getElementById('angleSlider').value = deg;
+      onSlider(deg);
+      document.querySelectorAll('.presets .btn').forEach(b => b.classList.remove('active'));
+      if (deg === 0) event.target.classList.add('active');
+      if (deg === 90) document.getElementById('btnHalf').classList.add('active');
+      if (deg === 170) event.target.classList.add('active');
+    }
+
+    function onSlider(val) {
+      const angle = parseFloat(val);
+      document.getElementById('sliderVal').textContent = Math.round(angle) + '°';
+      document.getElementById('hudAngle').textContent = 'Hinge: ' + angle.toFixed(0) + '°';
+
+      const halfRad = THREE.MathUtils.degToRad(angle / 2);
+      if (leftWingPivot && rightWingPivot) {
+        leftWingPivot.rotation.y = halfRad;
+        rightWingPivot.rotation.y = -halfRad;
+      }
+    }
+
+    // 手机图片上传并贴图处理
+    function handleImageUpload(event, index) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const texture = new THREE.Texture(img);
+          texture.needsUpdate = true;
+          panelMaterials[index].map = texture;
+          panelMaterials[index].needsUpdate = true;
+
+          // 在界面小格子中显示预览图
+          const box = document.getElementById('box' + (index + 1));
+          let thumb = box.querySelector('img');
+          if (!thumb) {
+            thumb = document.createElement('img');
+            box.appendChild(thumb);
+          }
+          thumb.src = e.target.result;
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    window.onload = init3D;
+  </script>
+</body>
+</html>
